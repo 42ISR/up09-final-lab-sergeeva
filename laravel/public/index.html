@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Movie Reviews Platform</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .auth-section, .movie-form { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        input, textarea, button { display: block; width: 100%; margin-bottom: 10px; padding: 10px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; }
+        button { background: #3498db; color: white; font-weight: bold; cursor: pointer; border: none; }
+        button:hover { background: #2980b9; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        .item-card { background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; flex-direction: column; }
+        .item-image { width: 100%; height: 200px; object-fit: cover; background: #eee; }
+        .item-content { padding: 15px; flex-grow: 1; display: flex; flex-direction: column; }
+        .item-title { margin: 0 0 10px 0; color: #2c3e50; }
+        .item-description { font-size: 0.9em; color: #666; flex-grow: 1; }
+        .item-meta { margin-top: 10px; font-size: 0.85em; color: #888; }
+        .danger-btn { background: #e74c3c; margin-top: 10px; }
+        .danger-btn:hover { background: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>🎬 Movie Reviews</h1>
+        <div id="user-info">
+            <span id="user-name">Гость</span>
+            <button id="logout-btn" style="display:none; width: auto;">Выйти</button>
+        </div>
+    </header>
+
+    <div id="auth-block" class="auth-section">
+        <h3 id="auth-title">Вход в систему</h3>
+        <input type="text" id="auth-username" placeholder="Имя пользователя (username)">
+        <input type="email" id="auth-email" placeholder="Email (для регистрации)" style="display:none;">
+        <input type="password" id="auth-password" placeholder="Пароль">
+        <button id="auth-submit-btn">Войти</button>
+        <p><a href="#" id="toggle-auth">Нет аккаунта? Зарегистрироваться</a></p>
+    </div>
+
+    <div id="add-movie-block" class="movie-form" style="display:none;">
+        <h3>Добавить новый фильм</h3>
+        <input type="text" id="movie-title" placeholder="Название фильма">
+        <input type="text" id="movie-director" placeholder="Режиссер">
+        <input type="number" id="movie-year" placeholder="Год выпуска">
+        <input type="text" id="movie-country" placeholder="Страна">
+        <textarea id="movie-description" placeholder="Описание"></textarea>
+        <button id="add-movie-btn">Сохранить фильм</button>
+    </div>
+
+    <h2>Список фильмов</h2>
+    <div id="movies-container" class="grid"></div>
+</div>
+
+<script>
+    let token = localStorage.getItem('token');
+    let isRegisterMode = false;
+
+    const authBlock = document.getElementById('auth-block');
+    const authTitle = document.getElementById('auth-title');
+    const emailInput = document.getElementById('auth-email');
+    const authSubmitBtn = document.getElementById('auth-submit-btn');
+    const toggleAuth = document.getElementById('toggle-auth');
+    const userInfo = document.getElementById('user-name');
+    const logoutBtn = document.getElementById('logout-btn');
+    const addMovieBlock = document.getElementById('add-movie-block');
+    const moviesContainer = document.getElementById('movies-container');
+
+    toggleAuth.addEventListener('click', (e) => {
+        e.preventDefault();
+        isRegisterMode = !isRegisterMode;
+        authTitle.innerText = isRegisterMode ? 'Регистрация' : 'Вход в систему';
+        emailInput.style.display = isRegisterMode ? 'block' : 'none';
+        authSubmitBtn.innerText = isRegisterMode ? 'Зарегистрироваться' : 'Войти';
+        toggleAuth.innerText = isRegisterMode ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Зарегистрироваться';
+    });
+
+    authSubmitBtn.addEventListener('click', async () => {
+        const username = document.getElementById('auth-username').value;
+        const password = document.getElementById('auth-password').value;
+        const email = document.getElementById('auth-email').value;
+
+        const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+        const body = isRegisterMode ? { username, email, password } : { username, password };
+
+        try {
+            const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+
+            if (res.ok) {
+                token = data.token;
+                localStorage.setItem('token', token);
+                checkAuth();
+                fetchMovies();
+            } else {
+                alert(data.message || 'Ошибка авторизации');
+            }
+        } catch (err) {
+            alert('Ошибка сервера');
+        }
+    });
+
+    logoutBtn.addEventListener('click', () => {
+        localStorage.removeItem('token');
+        token = null;
+        checkAuth();
+    });
+
+    async function checkAuth() {
+        if (!token) {
+            userInfo.innerText = 'Гость';
+            logoutBtn.style.display = 'none';
+            authBlock.style.display = 'block';
+            addMovieBlock.style.display = 'none';
+            return;
+        }
+
+        try {
+            const res = await fetch('/api/auth/profile', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const user = await res.json();
+                userInfo.innerText = `Привет, ${user.username} (${user.role})`;
+                logoutBtn.style.display = 'inline-block';
+                authBlock.style.display = 'none';
+                addMovieBlock.style.display = 'block';
+            } else {
+                localStorage.removeItem('token');
+                token = null;
+                checkAuth();
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function fetchMovies() {
+        try {
+            const res = await fetch('/api/movies');
+            const data = await res.json();
+            renderMovies(data.data || data);
+        } catch (err) {
+            console.error('Ошибка загрузки:', err);
+        }
+    }
+
+    function renderMovies(movies) {
+        moviesContainer.innerHTML = movies.map(movie => `
+            <div class="item-card">
+                <img src="${movie.posterUrl || 'https://via.placeholder.com/300x200?text=No+Poster'}" alt="${movie.title}" class="item-image">
+                <div class="item-content">
+                    <h3 class="item-title">${movie.title} (${movie.year})</h3>
+                    <p class="item-description">${movie.description || 'Описание отсутствует'}</p>
+                    <div class="item-meta">
+                        <strong>Режиссер:</strong> ${movie.director}<br>
+                        <strong>Страна:</strong> ${movie.country}
+                    </div>
+                    ${token ? `<button onclick="deleteMovie(${movie.id})" class="danger-btn">Удалить</button>` : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    document.getElementById('add-movie-btn').addEventListener('click', async () => {
+        const title = document.getElementById('movie-title').value;
+        const director = document.getElementById('movie-director').value;
+        const year = document.getElementById('movie-year').value;
+        const country = document.getElementById('movie-country').value;
+        const description = document.getElementById('movie-description').value;
+
+        const res = await fetch('/api/movies', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ title, director, year, country, description })
+        });
+
+        if (res.ok) {
+            fetchMovies();
+            alert('Фильм добавлен!');
+        } else {
+            alert('Ошибка добавления');
+        }
+    });
+
+    async function deleteMovie(id) {
+        if (!confirm('Удалить фильм?')) return;
+
+        const res = await fetch(`/api/movies/${id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (res.ok) {
+            fetchMovies();
+        } else {
+            alert('Недостаточно прав для удаления');
+        }
+    }
+
+    checkAuth();
+    fetchMovies();
+</script>
+</body>
+</html>
